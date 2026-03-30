@@ -10,6 +10,7 @@ import (
 
 var DB *sql.DB
 
+// InitDB initializes the database connection using environment variables
 func InitDB() {
 	connStr := os.Getenv("DB_URL")
 
@@ -18,7 +19,7 @@ func InitDB() {
 	if err != nil {
 		log.Fatal("DB connection error:", err)
 	}
-
+	// Verify if the database is reachable
 	if err = DB.Ping(); err != nil {
 		log.Fatal("DB not reachable:", err)
 	}

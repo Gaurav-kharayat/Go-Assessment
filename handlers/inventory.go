@@ -16,7 +16,10 @@ type StockUpdateRequest struct {
 	Adjustment int    `json:"adjustment"`
 }
 
+// GetInventory retrieves all inventory items from the database
 func GetInventory(c *gin.Context) {
+
+	// Execute query to fetch all records from inventory table
 	rows, err := db.DB.Query("SELECT * FROM inventory")
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -26,10 +29,12 @@ func GetInventory(c *gin.Context) {
 
 	var items []models.Inventory
 
+	// Iterate through all rows returned by query
 	for rows.Next() {
 		var item models.Inventory
 		err := rows.Scan(&item.ID, &item.ItemName, &item.SKU, &item.StockCount, &item.Price, &item.UpdatedAt)
 		if err != nil {
+			// Handle scanning errors
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
@@ -95,7 +100,7 @@ func UpdateStock(c *gin.Context) {
 		return
 	}
 
-	// 🔥 Logging (IMPORTANT for assignment)
+	// 🔥 Logging
 	log.Printf("[LOG] SKU: %s | Old Stock: %d | New Stock: %d | Time: %s\n",
 		req.SKU, currentStock, newStock, time.Now().Format(time.RFC3339))
 
@@ -106,7 +111,10 @@ func UpdateStock(c *gin.Context) {
 	})
 }
 
+// GetLowStock retrieves all inventory items where stock_count is less than 10
 func GetLowStock(c *gin.Context) {
+
+	// Query database for items with low stock
 	rows, err := db.DB.Query("SELECT * FROM inventory WHERE stock_count < 10")
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
@@ -116,8 +124,10 @@ func GetLowStock(c *gin.Context) {
 
 	var items []models.Inventory
 
+	// Iterate through query results
 	for rows.Next() {
 		var item models.Inventory
+		// Scan each row into Inventory struct
 		err := rows.Scan(
 			&item.ID,
 			&item.ItemName,
@@ -127,9 +137,11 @@ func GetLowStock(c *gin.Context) {
 			&item.UpdatedAt,
 		)
 		if err != nil {
+			// Handle scanning errors
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
 		}
+		// Append item to response list
 		items = append(items, item)
 	}
 

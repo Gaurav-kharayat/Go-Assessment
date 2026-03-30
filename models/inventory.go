@@ -1,5 +1,6 @@
 package models
 
+// Inventory represents an item in the inventory table
 type Inventory struct {
 	ID         int     `json:"id"`
 	ItemName   string  `json:"item_name"`
