@@ -47,13 +47,13 @@ func GetInventory(c *gin.Context) {
 func UpdateStock(c *gin.Context) {
 	var req StockUpdateRequest
 
-	// 🔹 Bind JSON
+	// Bind incoming JSON payload
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": "Invalid JSON"})
 		return
 	}
 
-	// 🔥 Validation
+	// Validate required fields
 	if req.SKU == "" {
 		c.JSON(400, gin.H{"error": "SKU is required"})
 		return
@@ -64,47 +64,49 @@ func UpdateStock(c *gin.Context) {
 		return
 	}
 
-	// 🔹 Get current stock
-	var currentStock int
-
+	// Check if SKU exists first so we can return proper 404
+	var exists bool
 	err := db.DB.QueryRow(
-		"SELECT stock_count FROM inventory WHERE sku=$1",
+		"SELECT EXISTS(SELECT 1 FROM inventory WHERE sku = $1)",
 		req.SKU,
-	).Scan(&currentStock)
-
-	if err == sql.ErrNoRows {
-		c.JSON(404, gin.H{"error": "SKU not found"})
-		return
-	} else if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 🔹 Calculate new stock
-	newStock := currentStock + req.Adjustment
-
-	// 🔥 Prevent negative stock
-	if newStock < 0 {
-		c.JSON(400, gin.H{"error": "Stock cannot be negative"})
-		return
-	}
-
-	// 🔹 Update DB
-	_, err = db.DB.Exec(
-		"UPDATE inventory SET stock_count=$1, updated_at=NOW() WHERE sku=$2",
-		newStock, req.SKU,
-	)
+	).Scan(&exists)
 
 	if err != nil {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 🔥 Logging
-	log.Printf("[LOG] SKU: %s | Old Stock: %d | New Stock: %d | Time: %s\n",
-		req.SKU, currentStock, newStock, time.Now().Format(time.RFC3339))
+	if !exists {
+		c.JSON(404, gin.H{"error": "SKU not found"})
+		return
+	}
 
-	// 🔹 Success response
+	// Atomic update to avoid race conditions during concurrent requests
+	query := `
+	UPDATE inventory
+	SET stock_count = stock_count + $1,
+	    updated_at = NOW()
+	WHERE sku = $2 AND stock_count + $1 >= 0
+	RETURNING stock_count;
+	`
+
+	var newStock int
+
+	err = db.DB.QueryRow(query, req.Adjustment, req.SKU).Scan(&newStock)
+
+	// If no row returned here, SKU exists but stock would go below zero
+	if err == sql.ErrNoRows {
+		c.JSON(400, gin.H{"error": "Stock cannot go below zero"})
+		return
+	} else if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Log successful stock update
+	log.Printf("[LOG] SKU: %s | Adjustment: %d | New Stock: %d | Time: %s\n",
+		req.SKU, req.Adjustment, newStock, time.Now().Format(time.RFC3339))
+
 	c.JSON(200, gin.H{
 		"message":   "Stock updated",
 		"new_stock": newStock,
